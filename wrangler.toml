@@ -19,4 +19,4 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "visite-medicale-db"
-database_id = "COLLEZ_ICI_L_ID_DE_VOTRE_BASE_D1"
+database_id = "3ddac9e2-7486-438b-bf21-c0d7f122d170"
