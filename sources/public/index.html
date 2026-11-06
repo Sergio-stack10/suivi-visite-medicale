@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivi Visites Médicales</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏥</text></svg>">
+<link rel="stylesheet" href="/styles.css">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+</head>
+<body>
+
+<!-- ==================== CONNEXION ==================== -->
+<div id="login-view">
+  <form class="login-card" id="login-form" autocomplete="off">
+    <div class="logo">🏥</div>
+    <h1>Suivi des Visites Médicales</h1>
+    <div class="sub">Cloudflare Workers &middot; accès sécurisé</div>
+    <label for="login-user">Nom d'utilisateur</label>
+    <input id="login-user" type="text" autocomplete="username" required>
+    <label for="login-pass">Mot de passe</label>
+    <input id="login-pass" type="password" autocomplete="current-password" required>
+    <button class="btn btn-primary" type="submit">Se connecter</button>
+    <div id="login-error"></div>
+  </form>
+</div>
+
+<!-- ==================== APPLICATION ==================== -->
+<div id="app-view" class="hidden">
+  <button class="btn btn-secondary btn-sm hamburger" id="btn-burger">☰ Menu</button>
+
+  <aside id="sidebar">
+    <div class="user-box">
+      <div>👤 <b id="sb-user">–</b></div>
+      <div>🔑 Rôle : <span id="sb-role">–</span></div>
+      <div style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="btn-logout" style="width:100%">🚪 Se déconnecter</button></div>
+    </div>
+
+    <hr class="side-sep">
+
+    <div id="side-imports">
+      <div class="side-title">📥 Importation des fichiers</div>
+      <div class="side-file">
+        <label>Fichiers Planning (obligatoire)</label>
+        <input type="file" id="file-planning" accept=".xlsx,.xls,.xlsb" multiple>
+        <div class="fname" id="fname-planning"></div>
+      </div>
+      <div class="side-file">
+        <label>Fichier PLANIFICATION VISITE SYSTEMATIQUE</label>
+        <input type="file" id="file-liste" accept=".xlsx">
+        <div class="fname" id="fname-liste"></div>
+      </div>
+      <div class="side-file">
+        <label>Fichier Enregistrement visite médicale (RTA)</label>
+        <input type="file" id="file-rta" accept=".xlsx">
+        <div class="fname" id="fname-rta"></div>
+      </div>
+      <div class="side-note">Les fichiers restent dans votre navigateur jusqu'au clic sur un bouton d'import.</div>
+    </div>
+    <div id="side-lock" class="side-note hidden">🔒 Mode consultation : vous n'avez pas accès aux imports de fichiers.</div>
+  </aside>
+
+  <main id="main">
+    <h1 class="app-title">🏥 Suivi des Visites Médicales</h1>
+
+    <nav class="tabs" id="tabs-nav"></nav>
+
+    <!-- ======== ONGLET 1 : PLANNING MC & RIVER ======== -->
+    <section id="tab-1" class="tab-content hidden">
+      <div class="toolbar">
+        <h2 style="margin:0">Planning MC &amp; River</h2>
+        <div class="spacer"></div>
+        <select id="t1-week" class="inline-form" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:10px;font-size:13px"></select>
+        <button class="btn btn-danger btn-sm" id="t1-del-week">🗑️ Supprimer semaine</button>
+      </div>
+      <div class="card">
+        <div class="inline-form">
+          <div class="fld"><label>Nom de la semaine à enregistrer</label>
+            <input type="text" id="t1-week-name" placeholder="Ex : S33, Semaine 34..." style="min-width:220px"></div>
+          <button class="btn btn-primary" id="t1-import">🚀 Lancer l'import et le regroupement</button>
+          <span class="muted" id="t1-hint"></span>
+        </div>
+      </div>
+      <div id="t1-table"></div>
+      <div class="toolbar"><button class="btn btn-secondary" id="t1-export">📥 Exporter le planning (Excel)</button></div>
+    </section>
+
+    <!-- ======== ONGLET 2 : LISTE COLLABORATEURS ======== -->
+    <section id="tab-2" class="tab-content hidden">
+      <div class="toolbar">
+        <h2 style="margin:0">Liste des collaborateurs</h2>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="t2-load">📥 Charger le fichier</button>
+        <details class="danger" id="t2-danger"><summary>🗑️ Zone de danger</summary>
+          <div class="inside">
+            <div class="warn-box">Cette action supprimera définitivement la liste et tout l'historique de suivi.</div>
+            <label style="display:flex;gap:6px;align-items:center;margin:8px 0;font-size:13px">
+              <input type="checkbox" id="t2-confirm"> Je confirme vouloir TOUT supprimer</label>
+            <button class="btn btn-danger btn-sm" id="t2-del-all" disabled>Supprimer ALL</button>
+          </div>
+        </details>
+      </div>
+      <div class="card" id="t2-filters" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center"></div>
+      <div id="t2-table"></div>
+      <div class="toolbar"><button class="btn btn-secondary" id="t2-export">📥 Exporter la liste (Excel)</button></div>
+    </section>
+
+    <!-- ======== ONGLET 3 : GÉNÉRATION PLANNING ======== -->
+    <section id="tab-3" class="tab-content hidden">
+      <div class="toolbar">
+        <h2 style="margin:0">📅 Planification automatisée des visites (5 jours)</h2>
+        <div class="spacer"></div>
+        <label class="muted">Semaine à planifier :</label>
+        <select id="t3-week" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:10px;font-size:13px"></select>
+      </div>
+      <div id="t3-form"></div>
+      <div class="toolbar">
+        <button class="btn btn-primary" id="t3-generate">🚀 Générer la planification automatique</button>
+        <span class="muted">Créneaux de 30 min &middot; 4 personnes max / créneau</span>
+      </div>
+      <div id="t3-result"></div>
+      <div class="toolbar">
+        <h3 style="margin:0">✏️ Annuler ou modifier la planification (tableau interactif)</h3>
+      </div>
+      <div class="info-box" style="margin-bottom:10px">
+        💡 Modifiez directement les cellules ci-dessous (Statut, Date, Créneau). Pour déplanifier quelqu'un, remettez son statut à « Non Planifié ». Cliquez ensuite sur Sauvegarder.
+      </div>
+      <div class="toolbar">
+        <input type="text" id="t3-search" placeholder="🔍 Rechercher (nom, ID, projet...)" style="flex:1;min-width:220px;padding:8px 12px;border:1px solid #d1d5db;border-radius:10px;font-size:13px">
+        <button class="btn btn-primary" id="t3-save-edits">💾 Sauvegarder les modifications manuelles</button>
+      </div>
+      <div id="t3-edit-table"></div>
+    </section>
+
+    <!-- ======== ONGLET 4 : PLANNING VISITE ======== -->
+    <section id="tab-4" class="tab-content hidden">
+      <div class="toolbar">
+        <h2 style="margin:0">📋 Planning visite</h2>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" id="t4-export">📥 Exporter (Excel)</button>
+        <details class="danger" id="t4-danger"><summary>🗑️ Zone de danger</summary>
+          <div class="inside">
+            <div class="warn-box">Supprime DÉFINITIVEMENT toutes les planifications de toutes les semaines.</div>
+            <label style="display:flex;gap:6px;align-items:center;margin:8px 0;font-size:13px">
+              <input type="checkbox" id="t4-confirm"> Je confirme vouloir TOUT supprimer</label>
+            <button class="btn btn-danger btn-sm" id="t4-del-all" disabled>Supprimer ALL</button>
+          </div>
+        </details>
+      </div>
+      <div id="t4-table"></div>
+    </section>
+
+    <!-- ======== ONGLET 5 : IMPORT SUIVI (RTA) ======== -->
+    <section id="tab-5" class="tab-content hidden">
+      <div class="toolbar">
+        <h2 style="margin:0">📥 Import du fichier Suivi</h2>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="t5-import">📥 Importer RTA</button>
+        <button class="btn btn-danger" id="t5-del">🗑️ Supprimer RTA</button>
+      </div>
+      <div class="info-box">Importez le fichier rempli par les RTA (feuille « Suivi »). Les données s'affichent ci-dessous et alimentent le Dashboard (onglet 7) et les Absences (onglet 6).</div>
+      <div id="t5-table"></div>
+    </section>
+
+    <!-- ======== ONGLET 6 : ABSENCES ======== -->
+    <section id="tab-6" class="tab-content hidden">
+      <div class="toolbar">
+        <h2 style="margin:0">🚫 Suivi des Absences</h2>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost" id="t6-refresh">🔄 Actualiser</button>
+      </div>
+      <div id="t6-table"></div>
+      <div class="toolbar"><button class="btn btn-secondary" id="t6-export">📥 Exporter les absences (Excel)</button></div>
+    </section>
+
+    <!-- ======== ONGLET 7 : DASHBOARD ======== -->
+    <section id="tab-7" class="tab-content hidden">
+      <div class="toolbar">
+        <h2 style="margin:0">État d'avancement et extractions</h2>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost" id="t7-refresh">🔄 Actualiser</button>
+      </div>
+      <div id="t7-body"></div>
+    </section>
+
+    <!-- ======== ONGLET 8 : PARAMÈTRES (admin) ======== -->
+    <section id="tab-8" class="tab-content hidden">
+      <div class="toolbar"><h2 style="margin:0">⚙️ Paramètres</h2></div>
+
+      <div class="card">
+        <h3>👥 Utilisateurs et accès</h3>
+        <div id="t8-users"></div>
+        <div class="inline-form" style="margin-top:12px">
+          <div class="fld"><label>Nouvel utilisateur</label><input type="text" id="t8-new-user" placeholder="nom"></div>
+          <div class="fld"><label>Mot de passe</label><input type="password" id="t8-new-pass" placeholder="mot de passe"></div>
+          <div class="fld"><label>Rôle</label>
+            <select id="t8-new-role"><option value="consultation">Consultation</option><option value="admin">Admin</option></select></div>
+          <button class="btn btn-primary btn-sm" id="t8-add">➕ Ajouter</button>
+        </div>
+        <div class="info-box" style="margin-top:12px">🔒 Les mots de passe sont hachés (PBKDF2) : impossible de les relire. Modifiez les mots de passe par défaut (<span class="kbd">seravo</span>, <span class="kbd">concentrix</span>) dès la première connexion.</div>
+      </div>
+
+      <div class="card">
+        <h3>💾 Sauvegarde / restauration (migration)</h3>
+        <div class="toolbar">
+          <button class="btn btn-secondary" id="t8-export">📤 Exporter une sauvegarde (JSON)</button>
+          <label class="btn btn-primary" style="cursor:pointer">📥 Importer une sauvegarde (JSON)
+            <input type="file" id="t8-import-file" accept=".json" style="display:none"></label>
+        </div>
+        <div id="t8-import-progress" class="muted"></div>
+        <div class="warn-box" style="margin-top:8px">L'import REMPLACE les données actuelles par celles du fichier. Utilisé une fois pour migrer les anciennes données <span class="kbd">medical_tracking.pkl</span> (fichier <span class="kbd">visites_medicales_migration.json</span> fourni avec le projet), ou pour restaurer une sauvegarde.</div>
+      </div>
+
+      <div class="card">
+        <h3>☁️ Hébergement Cloudflare (offre gratuite)</h3>
+        <div class="muted">
+          Application : Workers (100 000 requêtes/jour) &middot; Base : D1 (5 Go, 5 M lectures/jour, 100 000 écritures/jour) &middot; Aucun coût.
+          Les données sont stockées dans votre base D1 : pensez à exporter une sauvegarde régulièrement.
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="footer-fix">Developed by <span style="color:#fff">TEAM</span> <span style="color:#25E2CC;font-weight:700;letter-spacing:1px">TMM 🦄</span></div>
+<div id="toast-container"></div>
+<div id="loading" class="hidden"><div class="spinner"></div><div class="txt" id="loading-txt">Chargement…</div></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# ════════════════════════════════════════════════════════════════════
+#  Configuration de déploiement — utilisée par `wrangler deploy`,
+#  l'intégration GitHub « Workers Builds » et GitHub Actions.
+#  Voir DEPLOY-GIT.md (Options B et C).
+#
+#  À adapter UNE fois :
+#  1) wrangler d1 create visite-medicale-db
+#     (ou créez la base dans le tableau de bord : Stockage → D1)
+#  2) collez l'ID affiché dans database_id ci-dessous
+#  La liaison D1 (variable « DB ») est déclarée ici : pas besoin de
+#  la créer dans l'onglet Liaisons du tableau de bord.
+# ════════════════════════════════════════════════════════════════════
+
+name = "suivi-visites-medicales"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "visite-medicale-db"
+database_id = "COLLEZ_ICI_L_ID_DE_VOTRE_BASE_D1"
